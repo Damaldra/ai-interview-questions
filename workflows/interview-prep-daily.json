@@ -1,0 +1,131 @@
+{
+  "name": "AI Interview Prep Daily",
+  "nodes": [
+    {
+      "id": "c22b23fb-55ac-42ca-aef0-bf75f2b0a7f8",
+      "name": "Every Day 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [0, 192],
+      "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 9, "triggerAtMinute": 0 }] } }
+    },
+    {
+      "id": "036c0fe6-6cd9-4390-8a9c-33a1ba0e1a65",
+      "name": "Pick Topic & Date",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [224, 192],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": { "assignments": [
+          { "id": "t1", "name": "topic", "value": "={{ [\"n8n & workflow automation\",\"LLM apps, agents & RAG\",\"REST API & webhook integrations\",\"prompt engineering\",\"JavaScript / TypeScript\",\"Python for automation\",\"automation architecture & reliability\",\"databases & vector stores\",\"security & secrets in automations\",\"debugging & observability\",\"system design\",\"data wrangling & ETL\"][$now.ordinal % 12] }}", "type": "string" },
+          { "id": "t2", "name": "date", "value": "={{ $now.toFormat(\"yyyy-MM-dd\") }}", "type": "string" },
+          { "id": "t3", "name": "dateHuman", "value": "={{ $now.toFormat(\"dd.MM.yyyy\") }}", "type": "string" }
+        ] }
+      }
+    },
+    {
+      "id": "a03929ae-ae0a-4799-8d6f-dab4d55cdcea",
+      "name": "Generate Interview Q&A",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [448, 192],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Today's topic: {{ $json.topic }}\nDate: {{ $json.date }}\n\nGenerate one fresh interview question with a model answer for this topic.",
+        "hasOutputParser": true,
+        "options": { "systemMessage": "You are a senior technical interviewer hiring an AI Automation Engineer. The candidate builds automations on n8n, vibecodes with Cursor / Claude Code, does REST API & webhook integrations, LLM agents and RAG (OpenAI, Anthropic), and codes in JavaScript/TypeScript and Python. Each day you produce ONE realistic interview question on the given topic, plus a strong model answer written in the first person as the candidate would answer in a real interview. Return strictly JSON matching the schema. Rules: question - a single concrete realistic interview question (conceptual, scenario-based, or a short practical task); difficulty - one of junior, middle, or senior; answer - a clear, well-structured, technically correct answer of 4-8 sentences that shows real understanding and, where relevant, references n8n / automation practice; tags - 2 to 4 short lowercase keyword tags. Write the question and answer in English. Vary the angle each day so questions do not repeat." }
+      }
+    },
+    {
+      "id": "614ad746-be41-41d6-bed7-f7f24c6dc4b8",
+      "name": "Q&A GPT Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [464, 416],
+      "parameters": { "model": { "__rl": true, "mode": "list", "value": "gpt-5-mini", "cachedResultName": "gpt-5-mini" }, "options": {} }
+    },
+    {
+      "id": "f31ba670-3d83-4f56-89ee-00538c9884f8",
+      "name": "Q&A Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [592, 416],
+      "parameters": { "schemaType": "fromJson", "jsonSchemaExample": "{ \"topic\": \"REST API & webhook integrations\", \"difficulty\": \"middle\", \"question\": \"How would you make a webhook receiver idempotent?\", \"answer\": \"A clear first-person model answer of several sentences.\", \"tags\": [\"webhooks\", \"idempotency\", \"api\"] }" }
+    },
+    {
+      "id": "b6203b1b-0fac-48b8-9fed-d352a0f66811",
+      "name": "Build Outputs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [800, 192],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": { "assignments": [
+          { "id": "o1", "name": "publicMd", "value": "=# {{ $json.output.topic }} — {{ $json.output.difficulty }}\n\n**Q:** {{ $json.output.question }}\n\n**Tags:** {{ $json.output.tags.join(\", \") }}\n\n---\n_AI Automation Engineer interview question · {{ $(\"Pick Topic & Date\").item.json.date }} · auto-generated with n8n + GPT_\n", "type": "string" },
+          { "id": "o2", "name": "privateMd", "value": "=# {{ $json.output.topic }} — {{ $json.output.difficulty }}\n_{{ $(\"Pick Topic & Date\").item.json.date }}_\n\n## Question\n{{ $json.output.question }}\n\n## My answer (draft)\n{{ $json.output.answer }}\n\n**Tags:** {{ $json.output.tags.join(\", \") }}\n", "type": "string" },
+          { "id": "o3", "name": "telegramMsg", "value": "=🧠 Interview prep — {{ $json.output.topic }} ({{ $json.output.difficulty }})\n\n❓ {{ $json.output.question }}\n\n💡 {{ $json.output.answer }}\n\n🏷 {{ $json.output.tags.join(\", \") }}", "type": "string" },
+          { "id": "o4", "name": "date", "value": "={{ $(\"Pick Topic & Date\").item.json.date }}", "type": "string" }
+        ] }
+      }
+    },
+    {
+      "id": "95fea217-7a94-4b03-9080-200773d6ae43",
+      "name": "Send To Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1024, 0],
+      "onError": "continueRegularOutput",
+      "parameters": { "resource": "message", "operation": "sendMessage", "chatId": "<__PLACEHOLDER_VALUE__Your Telegram chat ID (find via @get_id_bot)__>", "text": "={{ $json.telegramMsg }}", "additionalFields": { "appendAttribution": false } }
+    },
+    {
+      "id": "50a0e051-2304-419a-b36e-2ca4432274d3",
+      "name": "Commit to Public Bank",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [1024, 192],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "file",
+        "operation": "create",
+        "authentication": "oAuth2",
+        "owner": { "__rl": true, "mode": "name", "value": "Damaldra" },
+        "repository": { "__rl": true, "mode": "name", "value": "ai-interview-questions" },
+        "filePath": "=questions/{{ $json.date }}.md",
+        "binaryData": false,
+        "fileContent": "={{ $json.publicMd }}",
+        "commitMessage": "=Add interview question {{ $json.date }}"
+      }
+    },
+    {
+      "id": "80c45067-febe-42cd-8a01-d508a9bcd3f9",
+      "name": "Commit to Private Log",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [1024, 384],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "file",
+        "operation": "create",
+        "authentication": "oAuth2",
+        "owner": { "__rl": true, "mode": "name", "value": "Damaldra" },
+        "repository": { "__rl": true, "mode": "name", "value": "interview-prep-log" },
+        "filePath": "=answers/{{ $json.date }}.md",
+        "binaryData": false,
+        "fileContent": "={{ $json.privateMd }}",
+        "commitMessage": "=Add answer {{ $json.date }}"
+      }
+    }
+  ],
+  "connections": {
+    "Every Day 09:00": { "main": [[{ "node": "Pick Topic & Date", "type": "main", "index": 0 }]] },
+    "Pick Topic & Date": { "main": [[{ "node": "Generate Interview Q&A", "type": "main", "index": 0 }]] },
+    "Generate Interview Q&A": { "main": [[{ "node": "Build Outputs", "type": "main", "index": 0 }]] },
+    "Q&A GPT Model": { "ai_languageModel": [[{ "node": "Generate Interview Q&A", "type": "ai_languageModel", "index": 0 }]] },
+    "Q&A Schema": { "ai_outputParser": [[{ "node": "Generate Interview Q&A", "type": "ai_outputParser", "index": 0 }]] },
+    "Build Outputs": { "main": [[{ "node": "Send To Telegram", "type": "main", "index": 0 }, { "node": "Commit to Public Bank", "type": "main", "index": 0 }, { "node": "Commit to Private Log", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
